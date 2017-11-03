@@ -1,4 +1,4 @@
-pragma solidity ^0.4.13;
+pragma solidity ^0.4.15;
 
 
 
@@ -165,14 +165,22 @@ contract ProductionToken is StandardToken, Ownable {
     // Shipments of parts. provider - customer - count
     mapping (address => mapping (address => uint256)) public shipments;
 
-    // Kanban threshold
-    mapping (address => uint256) public threshold;
+    // Kanban thresholds
+
+    struct kanbanStruct {
+        address provider;
+        uint256 threshold;
+        uint256 autoOrderValue;
+    }
+
+    mapping (address => kanbanStruct) public thresholds;
 
     event Producer(address producer, bool value);
     event Create(address producer, uint256 value);
     event Order(address indexed provider, address indexed customer, uint256 value);
     event Shipment(address indexed provider, address indexed customer, uint256 value);
-    event Delivery(address indexed provider, address indexed customer, uint256 value);
+    event Reception(address indexed provider, address indexed customer, uint256 value);
+    event Burn(address indexed provider, uint256 value);
 
     modifier onlyProducer {
         require(producers[msg.sender]);
@@ -202,9 +210,11 @@ contract ProductionToken is StandardToken, Ownable {
         Create(msg.sender, _value);
     }
 
-    function setThreshold(address _addr, uint256 _value) public {
-        require(msg.sender == _addr);
-        threshold[_addr] = _value;
+    function setAutoOrder(address _provider, uint256 _threshold, uint256 _autoOrderValue) public {
+        require(_provider != address(0) && _threshold > 0 && _autoOrderValue > 0);
+        thresholds[msg.sender].provider = _provider;
+        thresholds[msg.sender].threshold = _threshold;
+        thresholds[msg.sender].autoOrderValue = _autoOrderValue;
     }
 
     function order(address _provider, uint256 _value) public returns (bool) {
@@ -220,14 +230,37 @@ contract ProductionToken is StandardToken, Ownable {
         orders[msg.sender][_customer] = _value < orders[msg.sender][_customer] ? orders[msg.sender][_customer].sub(_value) : 0;
         balances[msg.sender] = balances[msg.sender].sub(_value);
         Shipment(msg.sender, _customer, _value);
+        checkThreshold(msg.sender);
         return true;
     }
 
-    function delivery(address _provider, uint256 _value) public returns (bool) {
+    function reception(address _provider, uint256 _value) public returns (bool) {
         require(_value > 0);
         shipments[_provider][msg.sender] = shipments[_provider][msg.sender].sub(_value);
         balances[msg.sender] = balances[msg.sender].add(_value);
-        Delivery(_provider, msg.sender, _value);
+        Reception(_provider, msg.sender, _value);
         return true;
+    }
+
+    function checkThreshold(address _customer) public {
+        require(thresholds[_customer].threshold > 0);
+        if (balances[_customer] <= thresholds[_customer].threshold) {
+            orders[thresholds[_customer].provider][_customer] = thresholds[_customer].autoOrderValue;
+            Order(thresholds[_customer].provider, _customer, thresholds[_customer].autoOrderValue);
+        }
+    }
+
+    function burn(uint256 _value) public {
+        require(balances[msg.sender] >= _value);
+        if (super.transfer(address(0), _value)) {
+            totalSupply = totalSupply.sub(_value);
+            Burn(msg.sender, _value);
+            checkThreshold(msg.sender);
+        }
+    }
+
+    function transfer(address _to, uint _value) public returns (bool) {
+        super.transfer(_to, _value);
+        checkThreshold(msg.sender);
     }
 }
