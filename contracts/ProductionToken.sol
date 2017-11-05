@@ -243,8 +243,7 @@ contract ProductionToken is StandardToken, Ownable {
     }
 
     function checkThreshold(address _customer) public {
-        require(thresholds[_customer].threshold > 0);
-        if (balances[_customer] <= thresholds[_customer].threshold) {
+        if (thresholds[_customer].threshold > 0 && balances[_customer] <= thresholds[_customer].threshold) {
             orders[thresholds[_customer].provider][_customer] = thresholds[_customer].autoOrderValue;
             Order(thresholds[_customer].provider, _customer, thresholds[_customer].autoOrderValue);
         }
