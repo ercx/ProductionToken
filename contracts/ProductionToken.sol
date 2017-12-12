@@ -1,7 +1,5 @@
 pragma solidity ^0.4.15;
 
-
-
 import "./SafeMath.sol";
 
 /*
@@ -108,7 +106,7 @@ contract StandardToken is ERC20 {
     }
 
     /**
-     * @dev Function to check the amount of tokens that an owner allowed to a spender.
+    * @dev Function to check the amount of tokens that an owner allowed to a spender.
     * @param _owner address The address which owns the funds.
     * @param _spender address The address which will spend the funds.
     * @return A uint256 specifying the amount of tokens still available for the spender.
@@ -119,6 +117,28 @@ contract StandardToken is ERC20 {
 
 }
 
+/*
+* Simple token contract, ERC20-style, but without possibility of transfer tokens
+*
+*/
+contract SimpleToken {
+    using SafeMath for uint;
+
+    uint public totalSupply;
+
+    /* Actual balances of token holders */
+    mapping (address => uint) public balances;
+
+    /**
+    * @dev Gets the balance of the specified address.
+    * @param _owner The address to query the the balance of. 
+    * @return An uint256 representing the amount owned by the passed address.
+    */
+    function balanceOf(address _owner) view public returns (uint balance) {
+        return balances[_owner];
+    }
+
+}
 
 
 /**
@@ -152,7 +172,7 @@ contract Ownable {
 This token contract is used for tracking of parts without tracking individual serial numbers
 */
 
-contract SimpleProductionToken is StandardToken, Ownable {
+contract SimpleProductionToken is SimpleToken, Ownable {
 
     // Who can produce new parts
     mapping (address => bool) public producers;
@@ -173,6 +193,7 @@ contract SimpleProductionToken is StandardToken, Ownable {
     mapping (address => kanbanStruct) public thresholds;
 
     event Producer(address producer, bool value);
+    event AutoOrderSet(address provider, address customer, uint256 threshold, uint256 autoOrderValue);
     event Create(address producer, uint256 value);
     event Order(address indexed provider, address indexed customer, uint256 value);
     event Shipment(address indexed provider, address indexed customer, uint256 value);
@@ -185,14 +206,22 @@ contract SimpleProductionToken is StandardToken, Ownable {
         _;
     }
 
+    function SimpleProductionToken() public {
+        setProducer(msg.sender, true);
+    }
+
+    function isProductionToken() pure public returns (bool) {
+        return true;
+    }
+
     function setProducer(address _addr, bool _value) public onlyOwner {
         require(_addr != address(0));
         producers[_addr] = _value;
         Producer(_addr, _value);
     }
 
-    function create(uint256 _value) public onlyProducer {
-        balances[msg.sender] = _value;
+    function create(uint256 _value) internal onlyProducer {
+        balances[msg.sender] = balances[msg.sender].add(_value);
         totalSupply = totalSupply.add(_value);
         Create(msg.sender, _value);
     }
@@ -202,6 +231,18 @@ contract SimpleProductionToken is StandardToken, Ownable {
         thresholds[msg.sender].provider = _provider;
         thresholds[msg.sender].threshold = _threshold;
         thresholds[msg.sender].autoOrderValue = _autoOrderValue;
+        AutoOrderSet(_provider, msg.sender, _threshold, _autoOrderValue);
+        checkThreshold(msg.sender);
+    }
+
+    function checkThreshold(address _customer) public {
+        if (thresholds[_customer].threshold > 0) {
+            uint256 remaining = balances[_customer].add(orders[thresholds[_customer].provider][_customer]).add(shipments[thresholds[_customer].provider][_customer]);
+            if (remaining <= thresholds[_customer].threshold) {
+                orders[thresholds[_customer].provider][_customer] = orders[thresholds[_customer].provider][_customer].add(thresholds[_customer].autoOrderValue);
+                Order(thresholds[_customer].provider, _customer, thresholds[_customer].autoOrderValue);
+            }
+        }
     }
 
     function order(address _provider, uint256 _value) public returns (bool) {
@@ -211,42 +252,28 @@ contract SimpleProductionToken is StandardToken, Ownable {
         return true;
     }
 
-    function ship(address _customer, uint256 _value) public returns (bool) {
-        require(_value > 0);
+    function ship(address _customer, uint256 _value) internal returns (bool) {
+        require(_value >= balances[msg.sender]);
         shipments[msg.sender][_customer] = shipments[msg.sender][_customer].add(_value);
         orders[msg.sender][_customer] = _value < orders[msg.sender][_customer] ? orders[msg.sender][_customer].sub(_value) : 0;
         balances[msg.sender] = balances[msg.sender].sub(_value);
         Shipment(msg.sender, _customer, _value);
-        checkThreshold(msg.sender);
         return true;
     }
 
-    function accept(address _provider, uint256 _value) public returns (bool) {
-        require(_value > 0);
+    function accept(address _provider, uint256 _value) internal returns (bool) {
+        require(_value >= shipments[_provider][msg.sender]);
         shipments[_provider][msg.sender] = shipments[_provider][msg.sender].sub(_value);
         balances[msg.sender] = balances[msg.sender].add(_value);
         Acception(_provider, msg.sender, _value);
         return true;
     }
 
-    function checkThreshold(address _customer) public {
-        if (thresholds[_customer].threshold > 0 && balances[_customer] <= thresholds[_customer].threshold) {
-            orders[thresholds[_customer].provider][_customer] = thresholds[_customer].autoOrderValue;
-            Order(thresholds[_customer].provider, _customer, thresholds[_customer].autoOrderValue);
-        }
-    }
-
-    function burn(uint256 _value) public {
+    function burn(uint256 _value) internal {
         require(balances[msg.sender] >= _value);
         balances[msg.sender] = balances[msg.sender].sub(_value);
         totalSupply = totalSupply.sub(_value);
         Burn(msg.sender, _value);
-        checkThreshold(msg.sender);
-    }
-
-    function transfer(address _to, uint _value) public returns (bool) {
-        super.transfer(_to, _value);
-        checkThreshold(msg.sender);
     }
 
 // TODO
@@ -256,59 +283,52 @@ contract SimpleProductionToken is StandardToken, Ownable {
 
 
 /*
-This token contract is used for tracking of parts with individual serial numbers
+* This token contract is used for tracking of parts with individual serial numbers
 */
 
 contract ProductionToken is SimpleProductionToken {
-/*
+
     struct partsStruct {
-        uint256 partId;
         address holder;
+        string metadata;
     }
 
-    mapping (uint256 => partsStruct) parts;
-    //partsStruct[] public parts; */
-
-    mapping (uint256 => address) public parts;
-    mapping (uint256 => address) public partOrders;
+    mapping (uint256 => partsStruct) public parts;
+    mapping (uint256 => address) public partShipments;
 
     uint256 public lastId;
 
     modifier onlyHolder(uint256 _partId) {
-        require(msg.sender == parts[_partId]);
+        require(msg.sender == parts[_partId].holder);
         _;
     }
 
-    function create() onlyProducer public {
+    function createPart(string _metadata) onlyProducer public {
         super.create(1);
         lastId++;
-        parts[lastId] = msg.sender;
+        parts[lastId].holder = msg.sender;
+        parts[lastId].metadata = _metadata;
     }
 
-    function getHolder(uint256 _partId) view public returns (address) {
-        return parts[_partId];
+    function getPartHolder(uint256 _partId) view public returns (address) {
+        return parts[_partId].holder;
     }
 
-    function setHolder(uint256 _partId, address _holder) onlyHolder(_partId) public {
-        parts[_partId] = _holder;
-    }
-
-    function ship(uint256 _partId, address _customer) onlyHolder(_partId) public {
+    function shipPart(uint256 _partId, address _customer) onlyHolder(_partId) public {
         super.ship(_customer, 1);
-        partOrders[_partId] = _customer;
+        partShipments[_partId] = _customer;
     }
 
-    function accept(uint256 _partId, address _provider) public {
-        require(partOrders[_partId] == msg.sender);
-        super.accept(_provider, 1);
-        parts[_partId] = msg.sender;
-        delete partOrders[_partId];
+    function acceptPart(uint256 _partId) public {
+        require(partShipments[_partId] == msg.sender);
+        super.accept(getPartHolder(_partId), 1);
+        parts[_partId].holder = msg.sender;
+        delete partShipments[_partId];
     }
 
-    function burn(uint256 _partId) onlyHolder(_partId) public {
+    function burnPart(uint256 _partId) onlyHolder(_partId) public {
+        super.burn(1);
         delete parts[_partId];
-        balances[msg.sender] = balances[msg.sender].sub(1);
-        totalSupply = totalSupply.sub(1);
     }
 
 }
