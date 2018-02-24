@@ -81,6 +81,7 @@ contract SimpleProductionToken is SimpleToken, Ownable {
     event AutoOrderSet(address provider, address customer, uint256 threshold, uint256 autoOrderValue);
     event Create(address producer, uint256 value);
     event Order(address indexed provider, address indexed customer, uint256 value);
+    event CancelOrder(address indexed provider, address indexed customer, uint256 value);
     event Shipment(address indexed provider, address indexed customer, uint256 value);
     event Acception(address indexed provider, address indexed customer, uint256 value);
     event Burn(address indexed provider, uint256 value);
@@ -137,8 +138,16 @@ contract SimpleProductionToken is SimpleToken, Ownable {
         return true;
     }
 
+    function cancelOrder(address _provider, uint256 _value) public returns (bool) {
+        require(_value > 0);
+        require(_value <= orders[_provider][msg.sender]);
+        orders[_provider][msg.sender] = orders[_provider][msg.sender].sub(_value);
+        CancelOrder(_provider, msg.sender, _value);
+        return true;
+    }
+
     function ship(address _customer, uint256 _value) internal returns (bool) {
-        require(_value >= balances[msg.sender]);
+        require(_value <= balances[msg.sender]);
         shipments[msg.sender][_customer] = shipments[msg.sender][_customer].add(_value);
         orders[msg.sender][_customer] = _value < orders[msg.sender][_customer] ? orders[msg.sender][_customer].sub(_value) : 0;
         balances[msg.sender] = balances[msg.sender].sub(_value);
@@ -147,7 +156,8 @@ contract SimpleProductionToken is SimpleToken, Ownable {
     }
 
     function accept(address _provider, uint256 _value) internal returns (bool) {
-        require(_value >= shipments[_provider][msg.sender]);
+        require(_value > 0);
+        require(_value <= shipments[_provider][msg.sender]);
         shipments[_provider][msg.sender] = shipments[_provider][msg.sender].sub(_value);
         balances[msg.sender] = balances[msg.sender].add(_value);
         Acception(_provider, msg.sender, _value);
@@ -178,13 +188,37 @@ contract ProductionToken is SimpleProductionToken {
         string metadata;
     }
 
+    struct stickStruct {
+        address masterToken;              // foreign master token address
+        uint256 masterPartId;      // foreign master part id
+    }
+
     mapping (uint256 => partsStruct) public parts;
     mapping (uint256 => address) public partShipments;
 
     uint256 public lastId;
 
+    // Foreign parts sticked to the part of this token
+    // (this part id => struct)
+    mapping (uint256 => stickStruct) public sticked;
+    /*
+    // (foreign token address => foreign partId => this token partId)
+    mapping (address => mapping (uint256 => uint256)) public reverseSticked;
+
+    // Foreign master token of sticked part of this token
+    // (partId => token address)
+    mapping (uint256 => address) public masterToken;
+    */
+
+
     modifier onlyHolder(uint256 _partId) {
         require(msg.sender == parts[_partId].holder);
+        _;
+    }
+
+    modifier notSticked(uint256 _partId) {
+        require(sticked[_partId].masterToken == address(0));
+        require(sticked[_partId].masterPartId == 0);
         _;
     }
 
@@ -199,21 +233,34 @@ contract ProductionToken is SimpleProductionToken {
         return parts[_partId].holder;
     }
 
-    function shipPart(uint256 _partId, address _customer) onlyHolder(_partId) public {
+    function shipPart(uint256 _partId, address _customer) onlyHolder(_partId) notSticked(_partId) public {
         super.ship(_customer, 1);
         partShipments[_partId] = _customer;
     }
 
-    function acceptPart(uint256 _partId) public {
+    function acceptPart(uint256 _partId) notSticked(_partId) public {
         require(partShipments[_partId] == msg.sender);
         super.accept(getPartHolder(_partId), 1);
         parts[_partId].holder = msg.sender;
         delete partShipments[_partId];
     }
 
-    function burnPart(uint256 _partId) onlyHolder(_partId) public {
+    function burnPart(uint256 _partId) onlyHolder(_partId) notSticked(_partId) public {
         super.burn(1);
         delete parts[_partId];
+    }
+
+    function stickPart(uint256 _partId, address _addr, uint256 _masterPartId) onlyHolder(_partId) notSticked(_partId) public {
+        require(_addr != address(0));
+        require(_partId != 0);
+        require(_masterPartId != 0);
+        sticked[_partId].masterToken = _addr;
+        sticked[_partId].masterPartId = _masterPartId;
+    }
+
+    function unstickPart(uint256 _partId) onlyHolder(_partId) public {
+        require(_partId != 0);
+        delete sticked[_partId];
     }
 
 }
