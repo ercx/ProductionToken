@@ -210,6 +210,8 @@ contract ProductionToken is SimpleProductionToken {
     mapping (uint256 => address) public masterToken;
     */
 
+    event StickPart(address holder, uint256 partId, address addr, uint256 masterPartId);
+    event UnstickPart(address holder, uint256 partId);
 
     modifier onlyHolder(uint256 _partId) {
         require(msg.sender == parts[_partId].holder);
@@ -256,11 +258,13 @@ contract ProductionToken is SimpleProductionToken {
         require(_masterPartId != 0);
         sticked[_partId].masterToken = _addr;
         sticked[_partId].masterPartId = _masterPartId;
+        StickPart(msg.sender, _partId, _addr, _masterPartId);
     }
 
     function unstickPart(uint256 _partId) onlyHolder(_partId) public {
         require(_partId != 0);
         delete sticked[_partId];
+        UnstickPart(msg.sender, _partId);
     }
 
 }
