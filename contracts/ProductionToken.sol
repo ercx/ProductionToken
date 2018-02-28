@@ -272,6 +272,8 @@ contract ProductionToken is SimpleProductionToken {
         require(masterToken.isProductionToken());
         address holder = masterToken.getPartHolder(sticked[_partId].masterPartId);
         parts[_partId].holder = holder;
+        balances[holder] = balances[holder].add(1);
+        balances[msg.sender] = balances[msg.sender].sub(1);
         delete sticked[_partId];
         UnstickPart(msg.sender, _partId);
     }
