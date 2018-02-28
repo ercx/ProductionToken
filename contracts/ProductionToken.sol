@@ -257,7 +257,7 @@ contract ProductionToken is SimpleProductionToken {
         require(_partId != 0);
         require(_masterPartId != 0);
         ProductionToken masterToken;
-        masterToken = ProductionToken(sticked[_partId].masterToken);
+        masterToken = ProductionToken(_addr);
         require(masterToken.isProductionToken());
         require(msg.sender == masterToken.getPartHolder(_masterPartId));
         sticked[_partId].masterToken = _addr;
