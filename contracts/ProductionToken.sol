@@ -212,6 +212,7 @@ contract ProductionToken is SimpleProductionToken {
 
     event StickPart(address holder, uint256 partId, address addr, uint256 masterPartId);
     event UnstickPart(address holder, uint256 partId);
+    event SyncHolders(uint256 partId);
 
     modifier onlyHolder(uint256 _partId) {
         require(msg.sender == parts[_partId].holder);
@@ -265,6 +266,15 @@ contract ProductionToken is SimpleProductionToken {
         require(_partId != 0);
         delete sticked[_partId];
         UnstickPart(msg.sender, _partId);
+    }
+
+    function syncHolders(uint256 _partId) onlyOwner public {
+        ProductionToken masterToken;
+        masterToken = ProductionToken(sticked[_partId].masterToken);
+        require(masterToken.isProductionToken());
+        address holder = masterToken.getPartHolder(sticked[_partId].masterPartId);
+        parts[_partId].holder = holder;
+        SyncHolders(_partId);
     }
 
 }
