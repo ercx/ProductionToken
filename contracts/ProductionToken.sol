@@ -212,7 +212,6 @@ contract ProductionToken is SimpleProductionToken {
 
     event StickPart(address holder, uint256 partId, address addr, uint256 masterPartId);
     event UnstickPart(address holder, uint256 partId);
-    event SyncHolders(uint256 partId);
 
     modifier onlyHolder(uint256 _partId) {
         require(msg.sender == parts[_partId].holder);
@@ -257,6 +256,10 @@ contract ProductionToken is SimpleProductionToken {
         require(_addr != address(0));
         require(_partId != 0);
         require(_masterPartId != 0);
+        ProductionToken masterToken;
+        masterToken = ProductionToken(sticked[_partId].masterToken);
+        require(masterToken.isProductionToken());
+        require(msg.sender == masterToken.getPartHolder(_masterPartId));
         sticked[_partId].masterToken = _addr;
         sticked[_partId].masterPartId = _masterPartId;
         StickPart(msg.sender, _partId, _addr, _masterPartId);
@@ -264,17 +267,20 @@ contract ProductionToken is SimpleProductionToken {
 
     function unstickPart(uint256 _partId) onlyHolder(_partId) public {
         require(_partId != 0);
-        delete sticked[_partId];
-        UnstickPart(msg.sender, _partId);
-    }
-
-    function syncHolders(uint256 _partId) onlyOwner public {
         ProductionToken masterToken;
         masterToken = ProductionToken(sticked[_partId].masterToken);
         require(masterToken.isProductionToken());
         address holder = masterToken.getPartHolder(sticked[_partId].masterPartId);
         parts[_partId].holder = holder;
-        SyncHolders(_partId);
+        delete sticked[_partId];
+        UnstickPart(msg.sender, _partId);
+    }
+
+    function isSticked(uint256 _partId) view public returns (bool) {
+        if (sticked[_partId].masterToken == address(0))
+            return false;
+        else
+            return true;
     }
 
 }
