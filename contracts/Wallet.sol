@@ -2,6 +2,7 @@ pragma solidity ^0.4.15;
 
 import "./SafeMath.sol";
 import "./EIP20.sol";
+import "./ProductionToken.sol";
 
 /**
  * @title Ownable
@@ -29,33 +30,6 @@ contract Ownable {
     }
 }
 
-/*
-
-contract StickableToken is EIP20 {
-
-    mapping (address => mapping (address => uint256)) stickedBalances;
-    address masterAddress;
-
-    modifier notSticked() {
-        require (masterAddress == address(0));
-        _;
-    }
-
-    function transfer(address _to, uint256 _value) public notSticked returns (bool success) {
-        return super.transfer(_to, _value);
-    }
-
-    function transferFrom(address _from, address _to, uint256 _value) public notSticked returns (bool success) {
-        return super.transferFrom(_from, _to, _value);
-    }
-
-    function stick(address _stickedToken, uint256 _value) public notSticked {
-
-    }
-
-}
-
-*/
 
 contract Wallet is Ownable {
 
@@ -80,13 +54,13 @@ contract Wallet is Ownable {
 
     mapping (address => mapping (address => recipeStruct)) public recipeAB; // tokenA - tokenB
 
-    function getTokenBalance(address _tokenAddr, address _holderAddr) public view returns (uint256) {
+    function getEIP20TokenBalance(address _tokenAddr, address _holderAddr) public view returns (uint256) {
         EIP20 eip20Token;
         eip20Token = EIP20(_tokenAddr);
         return eip20Token.balanceOf(_holderAddr);
     }
 
-    function getTokenDecimals(address _tokenAddr) public view returns (uint8) {
+    function getEIP20TokenDecimals(address _tokenAddr) public view returns (uint8) {
         EIP20 eip20Token;
         eip20Token = EIP20(_tokenAddr);
         return eip20Token.decimals();
@@ -110,7 +84,7 @@ contract Wallet is Ownable {
         }
     }
     
-    function transferTokens(address _tokenAddr, address _to, uint256 _value) public onlyOwner {
+    function transferEIP20Tokens(address _tokenAddr, address _to, uint256 _value) public onlyOwner {
         EIP20 token;
         token = EIP20(_tokenAddr);
         if (token.balanceOf(this) > 0)

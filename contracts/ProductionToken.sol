@@ -1,4 +1,4 @@
-pragma solidity ^0.4.15;
+pragma solidity ^0.4.22;
 
 import "./SafeMath.sol";
 
@@ -83,7 +83,7 @@ contract SimpleProductionToken is SimpleToken, Ownable {
     event Order(address indexed provider, address indexed customer, uint256 value);
     event CancelOrder(address indexed provider, address indexed customer, uint256 value);
     event Shipment(address indexed provider, address indexed customer, uint256 value);
-    event Acception(address indexed provider, address indexed customer, uint256 value);
+    event Receive(address indexed provider, address indexed customer, uint256 value);
     event Burn(address indexed provider, uint256 value);
 
     // Only procucer can create new parts
@@ -92,7 +92,7 @@ contract SimpleProductionToken is SimpleToken, Ownable {
         _;
     }
 
-    function SimpleProductionToken() public {
+    constructor() public {
         setProducer(msg.sender, true);
     }
 
@@ -103,13 +103,13 @@ contract SimpleProductionToken is SimpleToken, Ownable {
     function setProducer(address _addr, bool _value) public onlyOwner {
         require(_addr != address(0));
         producers[_addr] = _value;
-        Producer(_addr, _value);
+        emit Producer(_addr, _value);
     }
 
     function create(uint256 _value) internal onlyProducer {
         balances[msg.sender] = balances[msg.sender].add(_value);
         totalSupply = totalSupply.add(_value);
-        Create(msg.sender, _value);
+        emit Create(msg.sender, _value);
     }
 
     function setAutoOrder(address _provider, uint256 _threshold, uint256 _autoOrderValue) public {
@@ -117,7 +117,7 @@ contract SimpleProductionToken is SimpleToken, Ownable {
         thresholds[msg.sender].provider = _provider;
         thresholds[msg.sender].threshold = _threshold;
         thresholds[msg.sender].autoOrderValue = _autoOrderValue;
-        AutoOrderSet(_provider, msg.sender, _threshold, _autoOrderValue);
+        emit AutoOrderSet(_provider, msg.sender, _threshold, _autoOrderValue);
         checkThreshold(msg.sender);
     }
 
@@ -126,7 +126,7 @@ contract SimpleProductionToken is SimpleToken, Ownable {
             uint256 remaining = balances[_customer].add(orders[thresholds[_customer].provider][_customer]).add(shipments[thresholds[_customer].provider][_customer]);
             if (remaining <= thresholds[_customer].threshold) {
                 orders[thresholds[_customer].provider][_customer] = orders[thresholds[_customer].provider][_customer].add(thresholds[_customer].autoOrderValue);
-                Order(thresholds[_customer].provider, _customer, thresholds[_customer].autoOrderValue);
+                emit Order(thresholds[_customer].provider, _customer, thresholds[_customer].autoOrderValue);
             }
         }
     }
@@ -134,7 +134,7 @@ contract SimpleProductionToken is SimpleToken, Ownable {
     function order(address _provider, uint256 _value) public returns (bool) {
         require(_value > 0);
         orders[_provider][msg.sender] = orders[_provider][msg.sender].add(_value);
-        Order(_provider, msg.sender, _value);
+        emit Order(_provider, msg.sender, _value);
         return true;
     }
 
@@ -142,7 +142,7 @@ contract SimpleProductionToken is SimpleToken, Ownable {
         require(_value > 0);
         require(_value <= orders[_provider][msg.sender]);
         orders[_provider][msg.sender] = orders[_provider][msg.sender].sub(_value);
-        CancelOrder(_provider, msg.sender, _value);
+        emit CancelOrder(_provider, msg.sender, _value);
         return true;
     }
 
@@ -151,16 +151,16 @@ contract SimpleProductionToken is SimpleToken, Ownable {
         shipments[msg.sender][_customer] = shipments[msg.sender][_customer].add(_value);
         orders[msg.sender][_customer] = _value < orders[msg.sender][_customer] ? orders[msg.sender][_customer].sub(_value) : 0;
         balances[msg.sender] = balances[msg.sender].sub(_value);
-        Shipment(msg.sender, _customer, _value);
+        emit Shipment(msg.sender, _customer, _value);
         return true;
     }
 
-    function accept(address _provider, uint256 _value) internal returns (bool) {
+    function receive(address _provider, uint256 _value) internal returns (bool) {
         require(_value > 0);
         require(_value <= shipments[_provider][msg.sender]);
         shipments[_provider][msg.sender] = shipments[_provider][msg.sender].sub(_value);
         balances[msg.sender] = balances[msg.sender].add(_value);
-        Acception(_provider, msg.sender, _value);
+        emit Receive(_provider, msg.sender, _value);
         return true;
     }
 
@@ -168,7 +168,7 @@ contract SimpleProductionToken is SimpleToken, Ownable {
         require(balances[msg.sender] >= _value);
         balances[msg.sender] = balances[msg.sender].sub(_value);
         totalSupply = totalSupply.sub(_value);
-        Burn(msg.sender, _value);
+        emit Burn(msg.sender, _value);
     }
 
 // TODO
@@ -213,6 +213,7 @@ contract ProductionToken is SimpleProductionToken {
     event StickPart(address holder, uint256 partId, address addr, uint256 masterPartId);
     event UnstickPart(address holder, uint256 partId);
     event SyncHolders(address account, uint256 partId);
+    event Operate(address who, address _contract, uint256 partId);
 
     modifier onlyHolder(uint256 _partId) {
         require(msg.sender == parts[_partId].holder);
@@ -241,9 +242,9 @@ contract ProductionToken is SimpleProductionToken {
         partShipments[_partId] = _customer;
     }
 
-    function acceptPart(uint256 _partId) notSticked(_partId) public {
+    function receivePart(uint256 _partId) notSticked(_partId) public {
         require(partShipments[_partId] == msg.sender);
-        super.accept(getPartHolder(_partId), 1);
+        super.receive(getPartHolder(_partId), 1);
         parts[_partId].holder = msg.sender;
         delete partShipments[_partId];
     }
@@ -263,14 +264,14 @@ contract ProductionToken is SimpleProductionToken {
         require(msg.sender == masterToken.getPartHolder(_masterPartId));
         sticked[_partId].masterToken = _addr;
         sticked[_partId].masterPartId = _masterPartId;
-        StickPart(msg.sender, _partId, _addr, _masterPartId);
+        emit StickPart(msg.sender, _partId, _addr, _masterPartId);
     }
 
     function unstickPart(uint256 _partId) onlyHolder(_partId) public {
         require(_partId != 0);
         syncHoldersInternal(_partId);
         delete sticked[_partId];
-        UnstickPart(msg.sender, _partId);
+        emit UnstickPart(msg.sender, _partId);
     }
 
     function syncHolders(uint256 _partId) public {
@@ -289,7 +290,7 @@ contract ProductionToken is SimpleProductionToken {
             parts[_partId].holder = holder;
             balances[holder] = balances[holder].add(1);
             balances[oldHolder] = balances[oldHolder].sub(1);
-            SyncHolders(msg.sender, _partId);
+            emit SyncHolders(msg.sender, _partId);
         }
     }
 
@@ -298,6 +299,18 @@ contract ProductionToken is SimpleProductionToken {
             return false;
         else
             return true;
+    }
+
+
+    function operate(address _contract, uint256 _partId) notSticked(_partId) public {
+        require(_partId != 0);
+        require(address(_contract) != 0);
+        balances[msg.sender] = balances[msg.sender].sub(1);
+        balances[_contract] = balances[_contract].add(1);
+        parts[_partId].holder = _contract;
+        emit Operate(msg.sender, _contract, _partId);
+        producers[_contract] = true;
+        emit Producer(_contract, true);
     }
 
 }
