@@ -294,6 +294,9 @@ contract ProductionToken is SimpleProductionToken {
         }
     }
 
+    /// @notice Checks if a part is sticked
+    /// @param _partId Token ID
+    /// @return True if a part is sticked
     function isSticked(uint256 _partId) view public returns (bool) {
         if (sticked[_partId].masterToken == address(0))
             return false;
@@ -301,7 +304,9 @@ contract ProductionToken is SimpleProductionToken {
             return true;
     }
 
-
+    /// @notice Transfer token for operation to a contract
+    /// @param _contract Contract address
+    /// @param _partId Token id
     function operate(address _contract, uint256 _partId) notSticked(_partId) public {
         require(_partId != 0);
         require(address(_contract) != 0);
